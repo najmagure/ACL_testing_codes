@@ -240,9 +240,7 @@ while any(~used)
             end
         end
     end
-    if chain(1) ~= chain(end)
-        chain = [chain, chain(1)];
-    end
+    
     loopsIdx{end+1} = chain;
 end
 
@@ -262,14 +260,23 @@ areas = zeros(numLoops,1);
 for k = 1:numLoops
     idxs = loopsIdx{k};
     pts3 = P_list(idxs,:);
-    if isequal(pts3(1,:), pts3(end,:)), pts3(end,:) = []; end
+    
+   isLoopClosed = isequal(pts3(1,:), pts3(end,:));
+    if isLoopClosed
+        pts3(end,:) = [];
+    end
     loops3D{k} = pts3;
-    XY = [(pts3 - P0) * u', (pts3 - P0) * v'];
-    c = mean(XY,1);
-    ang = atan2(XY(:,2)-c(2), XY(:,1)-c(1));
-    [~, order] = sort(ang);
-    XYs = XY(order,:);
-    areas(k) = polyarea(XYs(:,1), XYs(:,2));
+
+    if isLoopClosed
+        XY = [(pts3 - P0) * u', (pts3 - P0) * v'];
+        c = mean(XY,1);
+        ang = atan2(XY(:,2)-c(2), XY(:,1)-c(1));
+        [~, order] = sort(ang);
+        XYs = XY(order,:);
+        areas(k) = polyarea(XYs(:,1), XYs(:,2));
+    else
+        areas(k) = NaN;
+    end
 end
-areaTotal = sum(areas);
+areaTotal = sum(areas(~isnan(areas)));
 end
