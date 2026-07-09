@@ -121,20 +121,28 @@ for k = 1:num
     Ppos = cutPoints(k,:);
     loops3D = loopsByCut{k};
 
+    allXY = zeros(0,2);
     for L = 1:numel(loops3D)
         pts3 = loops3D{L};
         XY = [(pts3 - Ppos) * u', (pts3 - Ppos) * v'];
-        
+
         % Plotting without forcing the gap closed
         plot(XY(:,1), XY(:,2), '-', ...
             'Color', colors(k,:), ...
             'LineWidth', 1.5);
+
+        allXY = [allXY; XY];
+    end
+
+    if size(allXY,1) >= 3
+        [ellX, ellY] = fitEquivalentEllipse2D(allXY);
+        plot(ellX, ellY, '--', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.5);
     end
 
     title(sprintf('%d%% cut (Area = %.3f)', perc(k), areas(k)));
     xlabel('u'); ylabel('v');
-   
-    % Get MATLAB's tight auto-limits
+
+    % auto-limits
     x_bounds = xlim;
     y_bounds = ylim;
 
@@ -147,8 +155,28 @@ for k = 1:num
     ylim([y_bounds(1) - y_pad, y_bounds(2) + y_pad]);
 end
 
-
 sgtitle('Flat 2D Projections of Cross Sections');
+
+%% Reference Ellipse Fit (point-based second moments, no shoelace)
+function [ellX, ellY] = fitEquivalentEllipse2D(XY)
+
+c = mean(XY,1);
+Xc = XY - c;
+Cov = (Xc' * Xc) / size(Xc,1);
+
+[evec, eval] = eig(Cov);
+[lam, order] = sort(diag(eval), 'descend');
+evec = evec(:, order);
+
+a_axis = sqrt(2*max(lam(1),0));
+b_axis = sqrt(2*max(lam(2),0));
+majorDir = evec(:,1);
+phi = atan2(majorDir(2), majorDir(1));
+
+t = linspace(0, 2*pi, 100)';
+ellX = c(1) + a_axis*cos(t)*cos(phi) - b_axis*sin(t)*sin(phi);
+ellY = c(2) + a_axis*cos(t)*sin(phi) + b_axis*sin(t)*cos(phi);
+end
 
 %% Cross Sectional Area from Mesh Local Function
 function [areaTotal, loops3D, areas] = crossSectionAreaFromMesh(V, F, P0, n)
@@ -267,16 +295,13 @@ for k = 1:numLoops
     end
     loops3D{k} = pts3;
 
-    if isLoopClosed
-        XY = [(pts3 - P0) * u', (pts3 - P0) * v'];
-        c = mean(XY,1);
-        ang = atan2(XY(:,2)-c(2), XY(:,1)-c(1));
-        [~, order] = sort(ang);
-        XYs = XY(order,:);
-        areas(k) = polyarea(XYs(:,1), XYs(:,2));
-    else
-        areas(k) = NaN;
     end
+    XY = [(pts3 - P0) * u', (pts3 - P0) * v'];
+    c = mean(XY,1);
+    ang = atan2(XY(:,2)-c(2), XY(:,1)-c(1));
+    [~, order] = sort(ang);
+    XYs = XY(order,:);
+    areas(k) = polyarea(XYs(:,1), XYs(:,2));
 end
-areaTotal = sum(areas(~isnan(areas)));
+areaTotal = sum(areas);
 end
