@@ -102,7 +102,7 @@ for k = 1:num
         'HandleVisibility', 'off');
 end
 
-%% 10. Final Format
+%% 10. Final Format 
 title('Specimen Cross Sections from PCA Axis');
 xlabel('X'); ylabel('Y'); zlabel('Z');
 legend('show', 'Location', 'best');
@@ -111,6 +111,46 @@ view(3);
 camlight;
 lighting gouraud;
 
+%% 11. Flat 2D Projections of Each Cut
+figure('Name','Flat 2D Cross-Section Projections');
+
+for k = 1:num
+    subplot(1, num, k);
+    hold on; axis equal; grid on; box on;
+
+    Ppos = cutPoints(k,:);
+    loops3D = loopsByCut{k};
+
+    for L = 1:numel(loops3D)
+        pts3 = loops3D{L};
+        XY = [(pts3 - Ppos) * u', (pts3 - Ppos) * v'];
+        
+        % Plotting without forcing the gap closed
+        plot(XY(:,1), XY(:,2), '-', ...
+            'Color', colors(k,:), ...
+            'LineWidth', 1.5);
+    end
+
+    title(sprintf('%d%% cut (Area = %.3f)', perc(k), areas(k)));
+    xlabel('u'); ylabel('v');
+   
+    % Get MATLAB's tight auto-limits
+    x_bounds = xlim;
+    y_bounds = ylim;
+
+    % Calculate a 10% visual padding
+    x_pad = (x_bounds(2) - x_bounds(1)) * 0.1;
+    y_pad = (y_bounds(2) - y_bounds(1)) * 0.1;
+
+    % Apply the padded limits so the shape breathes
+    xlim([x_bounds(1) - x_pad, x_bounds(2) + x_pad]);
+    ylim([y_bounds(1) - y_pad, y_bounds(2) + y_pad]);
+end
+
+
+sgtitle('Flat 2D Projections of Cross Sections');
+
+%% Cross Sectional Area from Mesh Local Function
 function [areaTotal, loops3D, areas] = crossSectionAreaFromMesh(V, F, P0, n)
 
 n = n(:)' / norm(n);
