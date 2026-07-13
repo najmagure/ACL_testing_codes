@@ -6,24 +6,16 @@ TR = stlread(fname);
 V = TR.Points;
 F = TR.ConnectivityList;
 
-%% 2. PCA Axis — computed ONCE on the full mesh (clamps included)
-% This axis is fixed for the rest of the script. It is NOT recomputed
-% after trimming: the clamps are attached along the true testing axis, so
-% the full-mesh axis is a more reliable reference than PCA on a short,
-% possibly-curved ligament sliver (which was causing the tilted/diagonal
-% cuts and the gaps in the flattened cross-sections).
+%% 2. PCA Axis (full mesh, computed once — clamps make this more reliable than PCA on a trimmed sliver)
 [coeff, ~, ~, ~, ~, mu] = pca(V);
-n = coeff(:,1)' / norm(coeff(:,1));   % long axis (fixed for whole script)
-w = coeff(:,2)' / norm(coeff(:,2));   % a transverse axis, used only for the 2D preview below
+n = coeff(:,1)' / norm(coeff(:,1));   % long axis, fixed for rest of script
+w = coeff(:,2)' / norm(coeff(:,2));   % transverse axis, for 2D preview only
 
-t = (V - mu) * n';   % each vertex's position along the axis
-r = (V - mu) * w';   % each vertex's position along the transverse direction
+t = (V - mu) * n';   % vertex position along axis
+r = (V - mu) * w';   % vertex position along transverse direction
 
-%% 3. Interactive Region Selection (drawn directly on the specimen silhouette)
-% Flatten the mesh onto the (axis, transverse) plane so you can actually
-% see the specimen shape — clamps wide at the ends, ligament narrow in the
-% middle — instead of a histogram. Drag the two red lines to bracket the
-% ligament, then click "Done" to continue.
+%% 3. Interactive Region Selection
+% Flatten mesh onto (axis, transverse) plane; drag red lines to bracket ligament, click Done.
 fig = figure('Name', 'Select Ligament Region');
 patch('Faces', F, 'Vertices', [t r], 'FaceColor', [0.75 0.8 0.9], 'EdgeColor', 'none');
 hold on; axis equal; grid on;
@@ -37,12 +29,10 @@ x2 = xmin + 0.7*(xmax-xmin);
 h1 = drawline('Position', [x1 min(ylim); x1 max(ylim)], 'Color', 'r', 'LineWidth', 2);
 h2 = drawline('Position', [x2 min(ylim); x2 max(ylim)], 'Color', 'r', 'LineWidth', 2);
 
-% Pauses execution until you click Done, so your dragged positions are
-% actually used (this was the original bug — positions were read instantly).
 uicontrol('Style', 'pushbutton', 'String', 'Done', ...
     'Units', 'normalized', 'Position', [0.45 0.01 0.1 0.06], ...
     'Callback', 'uiresume(gcbf)');
-uiwait(fig);
+uiwait(fig);   % blocks until Done is clicked, so dragged positions are read after release
 
 t1 = min(h1.Position(1,1), h2.Position(1,1));
 t2 = max(h1.Position(1,1), h2.Position(1,1));
@@ -50,11 +40,10 @@ fprintf('Selected region: t1 = %.3f, t2 = %.3f\n', t1, t2);
 
 %% 4. Trim Mesh to Selected Region
 keepVertex = (t >= t1) & (t <= t2);
-keepFace = sum(keepVertex(F), 2) >= 2;   % keep faces mostly inside the region
+keepFace = sum(keepVertex(F), 2) >= 2;   % keep faces mostly inside region
 Fkeep = F(keepFace, :);
 
-% Renumber vertices so the trimmed mesh is self-contained (needed for the
-% cross-section function and for exporting later if you want to)
+% renumber vertices so trimmed mesh is self-contained
 keepVertIdx = unique(Fkeep(:));
 Vtrim = V(keepVertIdx, :);
 remap = zeros(size(V,1), 1);
@@ -69,9 +58,7 @@ trisurf(Ftrim, Vtrim(:,1), Vtrim(:,2), Vtrim(:,3), 'FaceColor', 'cyan', 'EdgeCol
 axis equal; camlight; lighting gouraud;
 title('Cyan = Retained Ligament Region');
 
-%% =============== From here on: cross-section analysis on the TRIMMED ligament ===============
-% Note: n and mu are still the ones from the full-mesh PCA in Section 2 —
-% deliberately not recomputed here, see the note above.
+%% === From here: cross-section analysis on the TRIMMED ligament, using the full-mesh axis (n, mu) ===
 
 %% 6. Cut Positions
 perc = [20, 50, 80];
@@ -124,7 +111,7 @@ for k = 1:num
 
     for L = 1:numel(loops3D)
         pts = loops3D{L};
-        plotPts = [pts; pts(1,:)];   % repeat first point so the loop visually closes
+        plotPts = [pts; pts(1,:)];   % close the loop visually
         visFlag = 'off'; if L == 1, visFlag = 'on'; end
         plot3(plotPts(:,1), plotPts(:,2), plotPts(:,3), '-', 'Color', colors(k,:), ...
             'LineWidth', 1.5, 'DisplayName', sprintf('%d%% cut', perc(k)), 'HandleVisibility', visFlag);
@@ -156,7 +143,7 @@ for k = 1:num
     for L = 1:numel(loops3D)
         pts3 = loops3D{L};
         XY = [(pts3 - Ppos) * u', (pts3 - Ppos) * v'];
-        plotXY = [XY; XY(1,:)];   % repeat first point so the loop visually closes
+        plotXY = [XY; XY(1,:)];   % close the loop visually
         plot(plotXY(:,1), plotXY(:,2), '-', 'Color', colors(k,:), 'LineWidth', 1.5);
         allXY = [allXY; XY];
     end
@@ -203,12 +190,12 @@ n = n(:)' / norm(n);
 tol = 1e-12;
 edges = [1 2; 2 3; 3 1];
 
-% Step 1: find where the cutting plane crosses each triangle's edges
+% Step 1: intersect cutting plane with each triangle's edges
 segments = zeros(size(F,1)*2,6);
 segcount = 0;
 for i = 1:size(F,1)
     tri = V(F(i,:),:);
-    d = (tri - P0) * n';         % signed distance of each vertex to the plane
+    d = (tri - P0) * n';   % signed distance of each vertex to plane
     pts = zeros(0,3);
     for e = 1:3
         a = edges(e,1); b = edges(e,2);
@@ -244,7 +231,7 @@ if isempty(segments)
     return;
 end
 
-% Step 2: build unique point list + edge index list for stitching
+% Step 2: unique point list + edge index list for stitching
 P_list = unique(round([segments(:,1:3); segments(:,4:6)],12),'rows','stable');
 toIndex = @(pnt) find(all(abs(P_list - pnt) < 1e-8, 2), 1);
 E = zeros(size(segments,1),2);
@@ -253,7 +240,7 @@ for k = 1:size(segments,1)
     E(k,2) = toIndex(segments(k,4:6));
 end
 
-% Step 3: stitch edge segments into closed loops (walk forward, then backward)
+% Step 3: stitch edge segments into closed loops
 used = false(size(E,1),1);
 loopsIdx = {};
 while any(~used)
@@ -283,7 +270,7 @@ while any(~used)
     loopsIdx{end+1} = chain;
 end
 
-% Step 4: project each loop into the plane's (u,v) basis and compute area
+% Step 4: project each loop into plane's (u,v) basis and compute area
 u_guess = P_list(1,:) - P0;
 if norm(u_guess) < 1e-8
     u_guess = P_list(min(2,size(P_list,1)),:) - P0;
