@@ -1,6 +1,4 @@
-%% Stress relaxation viscoelastic property extraction
-
-%% ============================== USER INPUTS ===============================
+%% ============================== INPUTS ===============================
 
 [daqName, daqPath] = uigetfile({'*.txt;*.xlsx;*.xls', 'Acumen DAQ files (*.txt, *.xlsx, *.xls)'; '*.*', 'All files'}, ...
     'Select Acumen DAQ data file', fileparts(mfilename('fullpath')));
