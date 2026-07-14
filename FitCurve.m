@@ -1,4 +1,5 @@
 %% Stress relaxation viscoelastic property extraction
+
 %% ============================== USER INPUTS ===============================
 
 [daqName, daqPath] = uigetfile({'*.txt;*.xlsx;*.xls', 'Acumen DAQ files (*.txt, *.xlsx, *.xls)'; '*.*', 'All files'}, ...
@@ -247,19 +248,44 @@ function window = manualSelectRelaxation(T)
     plot(t, f, 'Color', [0.27 0.51 0.71], 'LineWidth', 0.7);
     hold on;
     xlabel('Time (s)'); ylabel('Force (N)');
-    title({'Drag the red lines to bracket the stress-relaxation hold'; 'Click "Done" when finished'});
+    title({'Drag the red lines to bracket the stress-relaxation hold'; ...
+        'Scroll to zoom, click "Reset View" to undo, click "Done" when finished'});
 
     tmin = min(t); tmax = max(t);
     t1 = tmin + 0.25 * (tmax - tmin);
     t2 = tmin + 0.75 * (tmax - tmin);
 
-    h1 = drawline('Position', [t1 min(ylim); t1 max(ylim)], 'Color', 'r', 'LineWidth', 2);
-    h2 = drawline('Position', [t2 min(ylim); t2 max(ylim)], 'Color', 'r', 'LineWidth', 2);
+    h1 = drawline('Position', [t1 min(ylim); t1 max(ylim)], 'Color', 'r', 'LineWidth', 0.75);
+    h2 = drawline('Position', [t2 min(ylim); t2 max(ylim)], 'Color', 'r', 'LineWidth', 0.75);
+
+    % Scroll-wheel zoom, centered on the cursor. drawline ROIs capture click-drag
+    % for repositioning, so the usual toolbar zoom/pan (which also relies on
+    % click-drag) can't be used here - the scroll wheel doesn't conflict with it.
+    homeXLim = xlim; homeYLim = ylim;
+    fig.WindowScrollWheelFcn = @(src, evt) scrollZoom(src, evt);
+
+    uicontrol('Style', 'pushbutton', 'String', 'Reset View', ...
+        'Units', 'normalized', 'Position', [0.32 0.01 0.12 0.06], ...
+        'Callback', @(~,~) resetView());
 
     uicontrol('Style', 'pushbutton', 'String', 'Done', ...
         'Units', 'normalized', 'Position', [0.45 0.01 0.1 0.06], ...
         'Callback', 'uiresume(gcbf)');
     uiwait(fig);
+
+    function scrollZoom(src, evt)
+        ax = src.CurrentAxes;
+        zoomFactor = 1 + 0.2 * sign(evt.VerticalScrollCount);
+        cp = ax.CurrentPoint;
+        xCenter = cp(1,1); yCenter = cp(1,2);
+        ax.XLim = xCenter + (ax.XLim - xCenter) * zoomFactor;
+        ax.YLim = yCenter + (ax.YLim - yCenter) * zoomFactor;
+    end
+
+    function resetView()
+        xlim(homeXLim);
+        ylim(homeYLim);
+    end
 
     window = sort([h1.Position(1,1), h2.Position(1,1)]);
     close(fig);
