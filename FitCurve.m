@@ -9,27 +9,30 @@ if isequal(daqName, 0)
 end
 DATA_FILE = fullfile(daqPath, daqName);
 
-CSA_MM2 = 5.0;          % cross-sectional area of the tissue, mm^2 (from your other script)
-L0_MM = 30.0;           % gauge / ligament length, mm (from your other script)
 
-AUTO_DETECT = true;         % try to find the relaxation window automatically
-CONFIRM_AUTO_DETECT = true; % show the detected window before fitting (press Enter to continue)
+CSA_MM2 = 79.8;          % enter cross-sectional area of the tissue, mm^2 
+L0_MM = 21.3;           % enter ligament length, mm
 
-OUTPUT_DIR = fullfile(fileparts(mfilename('fullpath')), "fitcurve_output");
+AUTO_DETECT = true;         % finds the relaxation window automatically
+CONFIRM_AUTO_DETECT = true; % shows the auto-detected window (press Enter to continue)
 
-if ~exist(OUTPUT_DIR, 'dir')
-    mkdir(OUTPUT_DIR);
-end
+% enter time [87.4 203.0] to force skip auto-detect & the drag-line. Leave [] to use AUTO_DETECT
+MANUAL_WINDOW = [];
+
 
 T = loadDaqFile(DATA_FILE);
 T = computeStressStrain(T, CSA_MM2, L0_MM);
 
 window = [];
-if AUTO_DETECT
+if ~isempty(MANUAL_WINDOW)
+    window = MANUAL_WINDOW;
+elseif AUTO_DETECT
     window = autoDetectRelaxation(T);
 end
 
-if ~isempty(window) && CONFIRM_AUTO_DETECT
+if ~isempty(MANUAL_WINDOW)
+
+elseif ~isempty(window) && CONFIRM_AUTO_DETECT
     fig = figure('Name', 'Auto-detected relaxation window');
     plot(T.Time_s, T.Force_N, 'Color', [0.27 0.51 0.71], 'LineWidth', 0.6);
     hold on;
@@ -61,32 +64,20 @@ tRel = seg.Time_s - seg.Time_s(1);
 stress = seg.Stress_MPa;
 strainLevel = mean(seg.Strain);
 
-[popt, r2, fitted] = fitQLV(tRel, stress);
+[popt, r2, fitted] = fitSLS(tRel, stress, strainLevel);
 fprintf('Fit R^2 = %.5f\n', r2);
 
-resultsT = qlvProperties(popt, strainLevel);
+resultsT = slsProperties(popt);
 disp(resultsT);
 
 fig = figure('Name', 'Stress relaxation fit', 'Position', [100 100 900 600]);
+
 plot(tRel, stress, '.', 'MarkerSize', 2, 'Color', [0.27 0.51 0.71]);
 hold on;
 plot(tRel, fitted, '-', 'LineWidth', 2, 'Color', [0.86 0.08 0.24]);
 xlabel('Time since hold start (s)'); ylabel('Stress (MPa)');
-legend('data', sprintf('QLV fit, R^2=%.4f', r2), 'Location', 'best');
+legend('data', sprintf('SLS fit, R^2=%.4f', r2), 'Location', 'best');
 title('Stress relaxation fit');
-
-figPath = fullfile(OUTPUT_DIR, "relaxation_fit.png");
-saveas(fig, figPath);
-fprintf('Saved fit plot to %s\n', figPath);
-
-resultsPath = fullfile(OUTPUT_DIR, "viscoelastic_properties.csv");
-writetable(resultsT, resultsPath);
-fprintf('Saved viscoelastic properties to %s\n', resultsPath);
-
-seg.Time_rel_s = tRel;
-segPath = fullfile(OUTPUT_DIR, "relaxation_segment.csv");
-writetable(seg, segPath);
-fprintf('Saved relaxation segment data to %s\n', segPath);
 
 
 %% ============================== LOCAL FUNCTIONS ============================
@@ -172,8 +163,6 @@ function T = loadDaqFile(path)
 end
 
 function tf = isMissingCell(v)
-% readcell returns MATLAB's dedicated `missing` type for a blank
-% spreadsheet cell, not NaN/'' - ismissing() is what catches that.
     tf = isempty(v) || any(ismissing(v)) || ...
         ((ischar(v) || isstring(v)) && strlength(strtrim(string(v))) == 0);
 end
@@ -184,8 +173,6 @@ function T = computeStressStrain(T, csaMm2, l0Mm)
 end
 
 function window = autoDetectRelaxation(T, minHoldS, minDispFraction, settleTrimS, stillWindowS, stillFrac)
-% Longest constant-displacement hold at a non-trivial displacement level.
-% Returns [tStart tEnd], or [] if nothing qualifies.
     if nargin < 2, minHoldS = 15.0; end
     if nargin < 3, minDispFraction = 0.3; end
     if nargin < 4, settleTrimS = 0.3; end
@@ -239,8 +226,7 @@ function window = autoDetectRelaxation(T, minHoldS, minDispFraction, settleTrimS
 end
 
 function window = manualSelectRelaxation(T)
-% Draggable drawline ROIs (Image Processing Toolbox), same pattern as
-% CalculatingCSA.m's region selector.
+% Draggable drawline (Image Processing Toolbox)
     t = T.Time_s;
     f = T.Force_N;
 
@@ -258,9 +244,6 @@ function window = manualSelectRelaxation(T)
     h1 = drawline('Position', [t1 min(ylim); t1 max(ylim)], 'Color', 'r', 'LineWidth', 0.75);
     h2 = drawline('Position', [t2 min(ylim); t2 max(ylim)], 'Color', 'r', 'LineWidth', 0.75);
 
-    % Scroll-wheel zoom, centered on the cursor. drawline ROIs capture click-drag
-    % for repositioning, so the usual toolbar zoom/pan (which also relies on
-    % click-drag) can't be used here - the scroll wheel doesn't conflict with it.
     homeXLim = xlim; homeYLim = ylim;
     fig.WindowScrollWheelFcn = @(src, evt) scrollZoom(src, evt);
 
@@ -291,43 +274,47 @@ function window = manualSelectRelaxation(T)
     close(fig);
 end
 
-function s = qlvModel(p, t)
-% Fung's QLV reduced relaxation function: sigma(t) = sigma0 * G(t).
-    sigma0 = p(1); c = p(2); tau1 = p(3); tau2 = p(3) + p(4);
-    tSafe = max(t, 1e-6);  % E1(0) diverges; the true limit G(0)=1 is reached as t->0+
-    G = (1 + c * (expint(tSafe/tau2) - expint(tSafe/tau1))) / (1 + c*log(tau2/tau1));
-    s = sigma0 * G;
+function s = slsModel(p, t, strainLevel)
+
+% Standard linear solid stress-relaxation model
+    E1 = p(1); E2 = p(2); tau = p(3);
+    Einf = E1 * E2 / (E1 + E2);
+    s = strainLevel * Einf * (1 + (E1 / E2) * exp(-t / tau));
 end
 
-function [popt, r2, fitted] = fitQLV(tRel, stress)
-    sigma0_0 = max(stress(1), 1e-6);
+function [popt, r2, fitted] = fitSLS(tRel, stress, strainLevel)
+    E1_0 = max(stress(1), 1e-6) / strainLevel;
+    Einf_0 = max(stress(end), 1e-6) / strainLevel;
+    if Einf_0 >= E1_0
+        Einf_0 = 0.5 * E1_0;
+    end
+    E2_0 = E1_0 * Einf_0 / (E1_0 - Einf_0);
     duration = tRel(end);
-    tau1_0 = max(duration/1000, 1e-3);
-    tau2_0 = duration * 5;
+    tau_0 = duration / 5;
 
-    x0 = [sigma0_0; 1; tau1_0; tau2_0 - tau1_0];  % [sigma0, c, tau1, tau2-tau1]
-    lb = [0; 1e-4; 1e-3; 1e-3];
-    ub = [sigma0_0 * 2; 100; duration; duration * 1000];
+    x0 = [E1_0; E2_0; tau_0];
+    lb = [1e-6; 1e-6; 1e-3];
+    ub = [E1_0 * 10; E2_0 * 100; duration * 100];
 
     opts = optimoptions('lsqcurvefit', 'Display', 'off', ...
         'MaxFunctionEvaluations', 2e4, 'MaxIterations', 2e4);
-    popt = lsqcurvefit(@qlvModel, x0, tRel, stress, lb, ub, opts);
+    model = @(p, t) slsModel(p, t, strainLevel);
+    popt = lsqcurvefit(model, x0, tRel, stress, lb, ub, opts);
 
-    fitted = qlvModel(popt, tRel);
+    fitted = model(popt, tRel);
     ssRes = sum((stress - fitted).^2);
     ssTot = sum((stress - mean(stress)).^2);
     r2 = 1 - ssRes / ssTot;
 end
 
-function resultsT = qlvProperties(popt, strainLevel)
-    c = popt(2); tau1 = popt(3); tau2 = popt(3) + popt(4);
-    e0 = popt(1) / strainLevel;
-    eInf = e0 / (1 + c * log(tau2 / tau1));
-    pctRelax = (1 - eInf / e0) * 100;
+function resultsT = slsProperties(popt)
+    E1 = popt(1); E2 = popt(2); tau = popt(3);
+    Einf = E1 * E2 / (E1 + E2);
 
-    Property = {'Instantaneous modulus (E0)'; 'Equilibrium modulus (E_inf)'; ...
-        'Percent relaxation'; 'Damping coefficient (c)'};
-    Value = round([e0; eInf; pctRelax; c], 4);
-    Units = {'MPa'; 'MPa'; '%'; '-'};
+    Property = {'Spring modulus E1'; 'Spring modulus E2'; ...
+        'Equilibrium modulus'; 'Relaxation time (tau)'};
+    Value = round([E1; E2; Einf; tau], 4);
+    Units = {'MPa'; 'MPa'; 'MPa'; 'seconds'};
     resultsT = table(Property, Value, Units);
 end
+
