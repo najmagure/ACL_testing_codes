@@ -6,16 +6,15 @@ TR = stlread(fname);
 V = TR.Points;
 F = TR.ConnectivityList;
 
-%% 2. PCA Axis (full mesh, computed once — clamps make this more reliable than PCA on a trimmed sliver)
+%% 2. PCA Axis
 [coeff, ~, ~, ~, ~, mu] = pca(V);
-n = coeff(:,1)' / norm(coeff(:,1));   % long axis, fixed for rest of script
-w = coeff(:,2)' / norm(coeff(:,2));   % transverse axis, for 2D preview only
+n = coeff(:,1)' / norm(coeff(:,1));   
+w = coeff(:,2)' / norm(coeff(:,2));   
 
-t = (V - mu) * n';   % vertex position along axis
-r = (V - mu) * w';   % vertex position along transverse direction
+t = (V - mu) * n';   
+r = (V - mu) * w';   
 
 %% 3. Interactive Region Selection
-% Flatten mesh onto (axis, transverse) plane; drag red lines to bracket ligament, click Done.
 fig = figure('Name', 'Select Ligament Region');
 patch('Faces', F, 'Vertices', [t r], 'FaceColor', [0.75 0.8 0.9], 'EdgeColor', 'none');
 hold on; axis equal; grid on;
@@ -32,17 +31,16 @@ h2 = drawline('Position', [x2 min(ylim); x2 max(ylim)], 'Color', 'r', 'LineWidth
 uicontrol('Style', 'pushbutton', 'String', 'Done', ...
     'Units', 'normalized', 'Position', [0.45 0.01 0.1 0.06], ...
     'Callback', 'uiresume(gcbf)');
-uiwait(fig);   % blocks until Done is clicked, so dragged positions are read after release
+uiwait(fig);   
 
 t1 = min(h1.Position(1,1), h2.Position(1,1));
 t2 = max(h1.Position(1,1), h2.Position(1,1));
 
 %% 4. Trim Mesh to Selected Region
 keepVertex = (t >= t1) & (t <= t2);
-keepFace = sum(keepVertex(F), 2) >= 2;   % keep faces mostly inside region
+keepFace = sum(keepVertex(F), 2) >= 2;  
 Fkeep = F(keepFace, :);
 
-% renumber vertices so trimmed mesh is self-contained
 keepVertIdx = unique(Fkeep(:));
 Vtrim = V(keepVertIdx, :);
 remap = zeros(size(V,1), 1);
@@ -56,8 +54,6 @@ hold on;
 trisurf(Ftrim, Vtrim(:,1), Vtrim(:,2), Vtrim(:,3), 'FaceColor', 'cyan', 'EdgeColor', 'none');
 axis equal; camlight; lighting gouraud;
 title('Cyan = Retained Ligament Region');
-
-%% === From here: cross-section analysis on the TRIMMED ligament, using the full-mesh axis (n, mu) ===
 
 %% 6. Cut Positions
 perc = 50;
@@ -73,7 +69,7 @@ cutPoints = zeros(num,3);
 loopsByCut = cell(num,1);
 
 for k = 1:num
-    Ppos = mu + (p_coords(k) - mu*n') * n;   % point on cutting plane along n
+    Ppos = mu + (p_coords(k) - mu*n') * n;   
     cutPoints(k,:) = Ppos;
     [areas(k), loopsByCut{k}, ~] = crossSectionAreaFromMesh(Vtrim, Ftrim, Ppos, n);
 end
@@ -110,7 +106,7 @@ for k = 1:num
 
     for L = 1:numel(loops3D)
         pts = loops3D{L};
-        plotPts = [pts; pts(1,:)];   % close the loop visually
+        plotPts = [pts; pts(1,:)];   
         visFlag = 'off'; if L == 1, visFlag = 'on'; end
         plot3(plotPts(:,1), plotPts(:,2), plotPts(:,3), '-', 'Color', colors(k,:), ...
             'LineWidth', 1.5, 'DisplayName', sprintf('%d%% cut', perc(k)), 'HandleVisibility', visFlag);
@@ -142,7 +138,7 @@ for k = 1:num
     for L = 1:numel(loops3D)
         pts3 = loops3D{L};
         XY = [(pts3 - Ppos) * u', (pts3 - Ppos) * v'];
-        plotXY = [XY; XY(1,:)];   % close the loop visually
+        plotXY = [XY; XY(1,:)];   
         plot(plotXY(:,1), plotXY(:,2), '-', 'Color', colors(k,:), 'LineWidth', 1.5);
         allXY = [allXY; XY];
     end
@@ -176,7 +172,7 @@ evec = evec(:, order);
 
 a_axis = sqrt(2*max(lam(1),0));
 b_axis = sqrt(2*max(lam(2),0));
-phi = atan2(evec(2,1), evec(1,1));   % major-axis angle
+phi = atan2(evec(2,1), evec(1,1));   
 
 t = linspace(0, 2*pi, 100)';
 ellX = c(1) + a_axis*cos(t)*cos(phi) - b_axis*sin(t)*sin(phi);
@@ -194,7 +190,7 @@ segments = zeros(size(F,1)*2,6);
 segcount = 0;
 for i = 1:size(F,1)
     tri = V(F(i,:),:);
-    d = (tri - P0) * n';   % signed distance of each vertex to plane
+    d = (tri - P0) * n';   
     pts = zeros(0,3);
     for e = 1:3
         a = edges(e,1); b = edges(e,2);
@@ -207,7 +203,7 @@ for i = 1:size(F,1)
             pts = [pts; tri(b,:)];
         elseif da * db < 0
             t = da / (da - db);
-            pts = [pts; tri(a,:) + t*(tri(b,:) - tri(a,:))]; %#ok<AGROW>
+            pts = [pts; tri(a,:) + t*(tri(b,:) - tri(a,:))]; 
         end
     end
     if size(pts,1) >= 2
@@ -283,7 +279,7 @@ areas = zeros(numLoops,1);
 for k = 1:numLoops
     pts3 = P_list(loopsIdx{k},:);
     if isequal(pts3(1,:), pts3(end,:))
-        pts3(end,:) = [];   % drop duplicate closing point
+        pts3(end,:) = [];   
     end
     loops3D{k} = pts3;
 
