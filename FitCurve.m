@@ -1,6 +1,4 @@
-%% Stress relaxation viscoelastic property extraction
-
-%% ============================== USER INPUTS ===============================
+%% User Inputs
 
 [daqName, daqPath] = uigetfile({'*.txt;*.xlsx;*.xls', 'Acumen DAQ files (*.txt, *.xlsx, *.xls)'; '*.*', 'All files'}, ...
     'Select Acumen DAQ data file', fileparts(mfilename('fullpath')));
@@ -13,11 +11,11 @@ DATA_FILE = fullfile(daqPath, daqName);
 CSA_MM2 = 79.8;          % enter cross-sectional area of the tissue, mm^2 
 L0_MM = 21.3;           % enter ligament length, mm
 
-AUTO_DETECT = true;         % finds the relaxation window automatically
+AUTO_DETECT = true;         % finds stress-relaxation window automatically
 CONFIRM_AUTO_DETECT = true; % shows the auto-detected window (press Enter to continue)
 
-% enter time [87.4 203.0] to force skip auto-detect & the drag-line. Leave [] to use AUTO_DETECT
-MANUAL_WINDOW = [];
+
+MANUAL_WINDOW = []; % enter time range [87.4 203.0] to force skip auto-detect & the drag-line. Leave [] to use AUTO_DETECT
 
 
 T = loadDaqFile(DATA_FILE);
@@ -80,7 +78,7 @@ legend('data', sprintf('SLS fit, R^2=%.4f', r2), 'Location', 'best');
 title('Stress relaxation fit');
 
 
-%% ============================== LOCAL FUNCTIONS ============================
+%% Local functions
 
 function T = loadDaqFile(path)
     fid = fopen(path, 'rb');
@@ -221,7 +219,7 @@ function window = autoDetectRelaxation(T, minHoldS, minDispFraction, settleTrimS
         return;
     end
 
-    bestStart = min(bestStart + settleTrimS, bestEnd);  % trim ramp-settling transient
+    bestStart = min(bestStart + settleTrimS, bestEnd); 
     window = [bestStart, bestEnd];
 end
 
