@@ -1,6 +1,6 @@
 These MATLAB scripts were developed to help automate data analysis from ACL mechanical testing 
 
-%% Scripts
+Scripts:
 
 1. CalculatingCSA.m -- Uses .stl file from 3D scanning. Lets user crop out fixtures and keep only the ligament. Using the ligament mesh only, cross sectional area is calculated with a 2D best-fit ellipse.
 
