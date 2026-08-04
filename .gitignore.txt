@@ -1,4 +1,0 @@
-*.asv
-*.m~
-slprj/
-*.autosave
